@@ -1,16 +1,58 @@
 const User = require('./schemas/users');
 const jwt = require('jsonwebtoken');
 const gravatar = require('gravatar');
+const uuid = require('uuid').v4;
+const sgMail = require('@sendgrid/mail')
 require('dotenv').config();
 
 const SECRET_KEY = process.env.SECRET_KEY;
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+
+sgMail.setApiKey(SENDGRID_API_KEY);
+
 
 const createUser = async ({email, password}) => {
     const avatarURL = gravatar.url(email);
-    const newUser = new User({ email, password, avatarURL });
+    const verificationToken = uuid();
+    const newUser = new User({ email, password, avatarURL, verificationToken });
     newUser.setPassword(password);
     await newUser.save();
+
+    const msg = {
+        to: email,
+        from: 'natapasaman@gmail.com',
+        subject: 'Please, confirm registration',
+        text: `Follow the link to confirm registration: GET /users/verify/:${verificationToken}.`,
+        html: `<a target="_blank" href="http://localhost:8080/api//users/verify/:${verificationToken}">Follow the link to confirm registration</a>`,
+      }
+
+      sgMail.send(msg)
+        .then(() => console.log("Verification Token send in your email"))
+        .catch((error) => console.error(error));
+
     return newUser;
+}
+
+const verificationEmail = async (user) => {
+    const verifyUser = await User.findOneAndUpdate(
+        { _id: user.id },
+        {verificationToken: null, verify: true},
+        { new: true });
+    return verifyUser;
+}
+
+const sendRepeatEmail = async ({email, verificationToken}) => {
+    const msg = {
+        to: email,
+        from: 'natapasaman@gmail.com',
+        subject: 'Please, confirm registration',
+        text: `Follow the link to confirm registration: GET /users/verify/:${verificationToken}.`,
+        html: `<a target="_blank" href="http://localhost:8080/api//users/verify/:${verificationToken}">Follow the link to confirm registration</a>`,
+      }
+
+      sgMail.send(msg)
+        .then(() => console.log("Verification Token resend in your email"))
+        .catch((error) => console.error(error));
 }
 
 const loginUser = async (user) => {
@@ -46,6 +88,8 @@ const updateUserAvatar = async (userId, avatar) => {
 
 module.exports = {
     createUser,
+    verificationEmail,
+    sendRepeatEmail,
     loginUser, 
     logoutUser,
     updateUserSubscription,
