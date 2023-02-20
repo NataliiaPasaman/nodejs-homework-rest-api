@@ -5,6 +5,8 @@ const Jimp = require("jimp");
 const User = require('../service/schemas/users');
 const { 
   createUser, 
+  verificationEmail, 
+  sendRepeatEmail, 
   loginUser, 
   logoutUser, 
   updateUserSubscription, 
@@ -29,6 +31,38 @@ const create = async (req, res, next) => {
   });
 };
 
+const verification = async (req, res, next) => {
+  const { verificationToken } = req.params;
+  const candidate = await User.findOne({verificationToken});
+
+  if (!candidate) {
+    return next(createError(404, "User not Found"));
+  }
+
+  await verificationEmail(candidate);
+
+  res.status(200).json({message: 'Verification successful'});
+}
+
+const repeatVerification = async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: "Missing required field email" });
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) return next(createError(401, "Not found"));
+
+  const { verify, verificationToken } = user;
+
+  if (verify) {
+    return res.status(400).json({ message: "Verification has already been passed" });
+  }
+
+  await sendRepeatEmail({ email, verificationToken });
+  res.status(200).json({ message: "Verification email sent" });
+};
 
 const login = async (req, res, next) => {
   const { email, password } = req.body;
@@ -37,6 +71,10 @@ const login = async (req, res, next) => {
   if (!user || !user.comparePass(password)) {
     return next(createError(401, "Email or password is wrong"));
   };
+
+  if (user.verify === false) {
+    return next(createError(400, "User has not passed the verification process"))
+  }
 
   const token = await loginUser(user);
 
@@ -116,6 +154,8 @@ const updateAvatar = async (req, res, next) => {
 
 module.exports = {
   create,
+  verification,
+  repeatVerification,
   login,
   logout,
   currentUser,
